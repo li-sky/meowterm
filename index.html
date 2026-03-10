@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MeowTerm</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <!-- Title bar drag region -->
+    <div id="titlebar">
+      <span class="titlebar-text">🐱 MeowTerm</span>
+    </div>
+
+    <!-- Main layout -->
+    <div id="app">
+      <!-- Terminal container -->
+      <div id="terminal-container">
+        <div id="terminal"></div>
+      </div>
+
+      <!-- Resize handle -->
+      <div id="resize-handle">
+        <div class="handle-grip"></div>
+      </div>
+
+      <!-- AI Chat panel -->
+      <div id="chat-panel">
+        <div id="chat-header">
+          <div class="chat-header-left">
+            <span class="chat-icon">🤖</span>
+            <span class="chat-title">AI Assistant</span>
+            <span id="ai-status-badge" class="status-badge">checking...</span>
+          </div>
+          <div class="chat-header-right">
+            <button id="clear-chat-btn" title="Clear chat history">🗑️</button>
+            <button id="toggle-chat-btn" title="Toggle chat panel">▼</button>
+          </div>
+        </div>
+        <div id="chat-messages"></div>
+        <div id="chat-input-container">
+          <textarea
+            id="chat-input"
+            placeholder="Ask AI anything... (Enter to send, Shift+Enter for newline)"
+            rows="1"
+          ></textarea>
+          <button id="chat-send-btn" title="Send message">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="/src/renderer.js"></script>
+  </body>
+</html>
