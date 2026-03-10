@@ -59,6 +59,30 @@ window.api.onPtyExit((code) => {
   term.write(`\r\n\x1b[31m[Process exited with code ${code}]\x1b[0m\r\n`);
 });
 
+// Screen Capture for AI
+window.api.onAiRequestScreen(() => {
+  const buffer = term.buffer.active;
+  const lines = [];
+
+  // Get visible viewport and up to 200 lines of scrollback
+  const startRow = Math.max(0, buffer.baseY - 200);
+  const endRow = buffer.baseY + term.rows;
+
+  for (let i = startRow; i < endRow; i++) {
+    const line = buffer.getLine(i);
+    if (line) {
+      lines.push(line.translateToString(true)); // true = trim right whitespace
+    }
+  }
+
+  // Remove trailing empty lines for a cleaner prompt
+  while (lines.length > 0 && lines[lines.length - 1].trim() === '') {
+    lines.pop();
+  }
+
+  window.api.sendAiScreenData(lines.join('\n'));
+});
+
 // Fetch config and update terminal options
 async function applyConfig() {
   try {

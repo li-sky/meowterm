@@ -130,7 +130,7 @@ const createWindow = () => {
   ipcMain.handle('ai:send-message', async (_event, message) => {
     const result = await aiService.sendMessage(message, {
       ptyProcess,
-      terminalBuffer,
+      mainWindow,
       cwd: process.env.HOME || process.env.USERPROFILE || os.homedir(),
       onToolCall: (toolCall) => {
         mainWindow.webContents.send('ai:tool-call', toolCall);

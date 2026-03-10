@@ -21,4 +21,8 @@ contextBridge.exposeInMainWorld('api', {
     onAiToolCall: (callback) => {
         ipcRenderer.on('ai:tool-call', (_event, toolCall) => callback(toolCall));
     },
+    onAiRequestScreen: (callback) => {
+        ipcRenderer.on('ai:request-screen', () => callback());
+    },
+    sendAiScreenData: (data) => ipcRenderer.send('ai:screen-data', data),
 });

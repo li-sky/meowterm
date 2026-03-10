@@ -3,15 +3,22 @@ import path from 'node:path';
 
 /**
  * Capture the current terminal screen content.
- * Reads the last N lines written to the PTY by tracking output.
+ * Requests the visible screen from the renderer's xterm.js instance via IPC.
  */
-export function captureScreen(terminalBuffer) {
-    if (!terminalBuffer || terminalBuffer.length === 0) {
-        return '(terminal buffer is empty)';
-    }
-    // Return the last 200 lines max
-    const lines = terminalBuffer.slice(-200);
-    return lines.join('\n');
+export async function captureScreen(mainWindow) {
+    return new Promise((resolve) => {
+        // Send request to renderer
+        mainWindow.webContents.send('ai:request-screen');
+
+        // Listen for the one-time response
+        const { ipcMain } = require('electron');
+        ipcMain.once('ai:screen-data', (_event, data) => {
+            resolve(data || '(terminal is empty)');
+        });
+
+        // Timeout just in case
+        setTimeout(() => resolve('(screen capture timeout)'), 2000);
+    });
 }
 
 /**
@@ -63,8 +70,15 @@ export function typeKeyboard(ptyProcess, text) {
         return 'Error: No terminal process available';
     }
     try {
-        ptyProcess.write(text);
-        return `Typed ${text.length} characters into terminal`;
+        // Unescape literal \r, \n, \t strings that the AI might output
+        const unescapedText = text
+            .replace(/\\r/g, '\r')
+            .replace(/\\n/g, '\n')
+            .replace(/\\t/g, '\t')
+            .replace(/\\x1b/gi, '\x1b');
+
+        ptyProcess.write(unescapedText);
+        return `Typed ${unescapedText.length} characters into terminal`;
     } catch (err) {
         return `Error typing to terminal: ${err.message}`;
     }

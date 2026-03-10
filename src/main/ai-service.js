@@ -48,7 +48,7 @@ export class AIService {
      * Send a message and run the tool loop until we get a text response.
      * Calls onToolCall for each tool execution and returns the final text.
      */
-    async sendMessage(userMessage, { ptyProcess, terminalBuffer, cwd, onToolCall }) {
+    async sendMessage(userMessage, { ptyProcess, mainWindow, cwd, onToolCall }) {
         if (!this.client) {
             const init = this.initialize();
             if (!init.success) {
@@ -68,7 +68,7 @@ export class AIService {
             ];
 
             // Tool loop: keep calling until we get a text-only response
-            const MAX_ITERATIONS = 10;
+            const MAX_ITERATIONS = 50;
             for (let i = 0; i < MAX_ITERATIONS; i++) {
                 const response = await this.client.chat.completions.create({
                     model: this.model,
@@ -104,7 +104,7 @@ export class AIService {
 
                     switch (name) {
                         case 'capture_screen':
-                            result = captureScreen(terminalBuffer);
+                            result = await captureScreen(mainWindow);
                             break;
                         case 'fetch_file':
                             result = fetchFile(args.path, cwd);
