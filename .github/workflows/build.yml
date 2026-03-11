@@ -37,14 +37,14 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: meowterm-windows
-          path: out/make/squirrel.windows/x64/*.exe
+          path: out/make/squirrel.windows/**/*.exe
           
       - name: Archive Production Artifacts (macOS)
         if: matrix.os == 'macos-latest'
         uses: actions/upload-artifact@v4
         with:
           name: meowterm-macos
-          path: out/make/zip/darwin/x64/*.zip
+          path: out/make/zip/darwin/**/*.zip
 
       - name: Archive Production Artifacts (Linux)
         if: matrix.os == 'ubuntu-latest'
@@ -52,8 +52,8 @@ jobs:
         with:
           name: meowterm-linux
           path: |
-            out/make/deb/x64/*.deb
-            out/make/rpm/x64/*.rpm
+            out/make/deb/**/*.deb
+            out/make/rpm/**/*.rpm
 
   release:
     name: Create GitHub Release
