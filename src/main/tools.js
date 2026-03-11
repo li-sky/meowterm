@@ -144,6 +144,7 @@ async function checkTerminalReady(screenData, client, model) {
 
 /**
  * Safely execute a shell command by checking terminal state first.
+ * If safe, executes it and waits temporarily to capture resulting output.
  */
 export async function runCommand(mainWindow, ptyProcess, command, client, model) {
     if (!ptyProcess) {
@@ -158,8 +159,47 @@ export async function runCommand(mainWindow, ptyProcess, command, client, model)
             return `Error: The terminal appears to be busy or running an application, cannot safely execute: "${command}". Use type_keyboard if you are purposefully interacting with a running application.`;
         }
         
-        ptyProcess.write(command + '\r');
-        return `Successfully executed command: ${command}`;
+        return new Promise((resolve) => {
+            let output = [];
+            let finished = false;
+            let timeoutId;
+            let debounceId;
+            
+            // Listen for data
+            const disposable = ptyProcess.onData((data) => {
+                if (!finished) {
+                    output.push(data);
+                    
+                    // Reset calm-down debounce timer
+                    clearTimeout(debounceId);
+                    debounceId = setTimeout(() => finish(), 1000); // 1s of no output = done
+                }
+            });
+            
+            // Initial write
+            ptyProcess.write(command + '\r');
+            
+            // Absolute max wait of 5 seconds
+            timeoutId = setTimeout(() => finish(), 5000);
+            
+            function finish() {
+                if (finished) return;
+                finished = true;
+                clearTimeout(timeoutId);
+                clearTimeout(debounceId);
+                disposable.dispose();
+                
+                const finalStr = output.join('').replace(/\r/g, '');
+                
+                // Return only the tail if it's very long
+                const lines = finalStr.split('\n');
+                if (lines.length > 200) {
+                    resolve(lines.slice(-200).join('\n') + '\n\n(output truncated, showing last 200 lines)');
+                } else {
+                    resolve(finalStr || `Successfully executed command: ${command} (no output)`);
+                }
+            }
+        });
     } catch (err) {
         return `Error running command: ${err.message}`;
     }

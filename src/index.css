@@ -289,8 +289,11 @@ body {
 .message-prefix {
   font-weight: bold;
   color: var(--accent-primary);
-  white-space: pre;
   flex-shrink: 0;
+  width: 52px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
 }
 
 .message.user .message-prefix {

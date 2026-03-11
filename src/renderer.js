@@ -204,13 +204,21 @@ function addMessage(role, content, typewriter = false) {
 
   const prefixEl = document.createElement('div');
   prefixEl.classList.add('message-prefix');
+  
+  const nameEl = document.createElement('span');
   if (role === 'user') {
-    prefixEl.textContent = 'USER > ';
+    nameEl.textContent = 'USER';
   } else if (role === 'assistant') {
-    prefixEl.textContent = '🐱   > ';
+    nameEl.textContent = '🐱';
   } else {
-    prefixEl.textContent = '⚠️   > ';
+    nameEl.textContent = '⚠️';
   }
+  
+  const arrowEl = document.createElement('span');
+  arrowEl.textContent = '>';
+  
+  prefixEl.appendChild(nameEl);
+  prefixEl.appendChild(arrowEl);
   msgEl.appendChild(prefixEl);
 
   const contentEl = document.createElement('div');
@@ -244,7 +252,15 @@ function addToolCall(name, args) {
 
   const prefixEl = document.createElement('div');
   prefixEl.classList.add('message-prefix');
-  prefixEl.textContent = '🐱   > ';
+  
+  const nameEl = document.createElement('span');
+  nameEl.textContent = '🐱';
+  
+  const arrowEl = document.createElement('span');
+  arrowEl.textContent = '>';
+  
+  prefixEl.appendChild(nameEl);
+  prefixEl.appendChild(arrowEl);
 
   const contentEl = document.createElement('div');
   contentEl.classList.add('message-content');
