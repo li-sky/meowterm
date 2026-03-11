@@ -114,8 +114,15 @@ async function applyConfig() {
   try {
     const config = await window.api.getAppConfig();
     if (config) {
-      if (config.fontFamily) term.options.fontFamily = config.fontFamily;
-      if (config.fontSize) term.options.fontSize = config.fontSize;
+      if (config.terminal?.fontFamily) term.options.fontFamily = config.terminal.fontFamily;
+      if (config.terminal?.fontSize) term.options.fontSize = config.terminal.fontSize;
+
+      if (config.chat?.fontFamily) {
+        document.documentElement.style.setProperty('--chat-font-family', config.chat.fontFamily);
+      }
+      if (config.chat?.fontSize) {
+        document.documentElement.style.setProperty('--chat-font-size', config.chat.fontSize + 'px');
+      }
 
       // Re-fit in case font size changed
       fitAddon.fit();
@@ -185,53 +192,71 @@ toggleBtn.addEventListener('click', () => {
 clearBtn.addEventListener('click', async () => {
   chatMessages.innerHTML = '';
   await window.api.clearAiHistory();
-  addWelcomeMessage();
 });
 
-// Welcome message
-function addWelcomeMessage() {
-  addMessage(
-    'assistant',
-    'Hey! 🐱 I\'m your MeowTerm AI assistant.\n\nI can:\n• **Capture** the terminal screen\n• **Read** files from your system\n• **Type** commands into the terminal\n\nJust tell me what you need!'
-  );
-}
-addWelcomeMessage();
+// Ensure chat is empty on load for the placeholder styling to work
+chatMessages.innerHTML = '';
 
 // Add message to chat
-function addMessage(role, content) {
+function addMessage(role, content, typewriter = false) {
   const msgEl = document.createElement('div');
   msgEl.classList.add('message', role);
 
+  const prefixEl = document.createElement('div');
+  prefixEl.classList.add('message-prefix');
+  if (role === 'user') {
+    prefixEl.textContent = 'USER > ';
+  } else if (role === 'assistant') {
+    prefixEl.textContent = '🐱   > ';
+  } else {
+    prefixEl.textContent = '⚠️   > ';
+  }
+  msgEl.appendChild(prefixEl);
+
   const contentEl = document.createElement('div');
   contentEl.classList.add('message-content');
-  contentEl.innerHTML = formatMarkdown(content);
-
   msgEl.appendChild(contentEl);
   chatMessages.appendChild(msgEl);
-  chatMessages.scrollTop = chatMessages.scrollHeight;
+
+  if (typewriter && role === 'assistant') {
+    let i = 0;
+    const speed = 15;
+    const interval = setInterval(() => {
+      contentEl.innerHTML = formatMarkdown(content.slice(0, i));
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+      i += 2;
+      if (i > content.length) {
+        contentEl.innerHTML = formatMarkdown(content);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+        clearInterval(interval);
+      }
+    }, speed);
+  } else {
+    contentEl.innerHTML = formatMarkdown(content);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+  }
 }
 
 // Add tool call indicator
 function addToolCall(name, args) {
   const el = document.createElement('div');
-  el.classList.add('tool-call');
+  el.classList.add('message', 'tool');
 
-  const icons = {
-    capture_current_screen: '📸',
-    get_history_output: '📜',
-    fetch_file: '📄',
-    type_keyboard: '⌨️',
-  };
+  const prefixEl = document.createElement('div');
+  prefixEl.classList.add('message-prefix');
+  prefixEl.textContent = '🐱   > ';
+
+  const contentEl = document.createElement('div');
+  contentEl.classList.add('message-content');
 
   const argsStr = Object.entries(args || {})
     .map(([k, v]) => `${k}=${typeof v === 'string' ? v : JSON.stringify(v)}`)
     .join(' ');
 
-  el.innerHTML = `
-    <span class="tool-icon">${icons[name] || '🔧'}</span>
-    <span class="tool-name">${name}</span>
-    ${argsStr ? `<span class="tool-args">${escapeHtml(argsStr)}</span>` : ''}
-  `;
+  contentEl.textContent = `[${name}] ${argsStr}`;
+
+  el.appendChild(prefixEl);
+  el.appendChild(contentEl);
 
   chatMessages.appendChild(el);
   chatMessages.scrollTop = chatMessages.scrollHeight;
@@ -282,7 +307,7 @@ async function sendMessage() {
         addMessage('error', `⚠️ ${result.error}`);
       }
     } else if (result.content) {
-      addMessage('assistant', result.content);
+      addMessage('assistant', result.content, true);
     }
   } catch (err) {
     removeThinking();

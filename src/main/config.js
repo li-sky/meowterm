@@ -8,6 +8,7 @@ const DEFAULT_CONFIG = {
     ai: {
         provider: 'openai', // Optional for now
         model: 'gpt-4o-mini',
+        smallModel: 'gpt-4o-mini',
         apiKey: '',
         baseURL: 'https://api.openai.com/v1',
     },
@@ -15,6 +16,10 @@ const DEFAULT_CONFIG = {
         shell: process.platform === 'win32' ? 'pwsh.exe' : '/bin/bash',
         fontFamily: "'JetBrains Mono', 'Cascadia Code', 'Fira Code', monospace",
         fontSize: 14,
+    },
+    chat: {
+        fontFamily: "'JetBrains Mono', 'Cascadia Code', 'Fira Code', monospace",
+        fontSize: 12,
     },
 };
 
@@ -24,10 +29,11 @@ export function loadConfig() {
             const fileContent = fs.readFileSync(CONFIG_FILE, 'utf-8');
             const userConfig = JSON.parse(fileContent);
 
-            // Deep merge (simple 2-level merge for ai/terminal)
+            // Deep merge (simple 2-level merge for ai/terminal/chat)
             return {
                 ai: { ...DEFAULT_CONFIG.ai, ...(userConfig.ai || {}) },
                 terminal: { ...DEFAULT_CONFIG.terminal, ...(userConfig.terminal || {}) },
+                chat: { ...DEFAULT_CONFIG.chat, ...(userConfig.chat || {}) },
             };
         }
     } catch (error) {
@@ -43,10 +49,10 @@ export function loadConfig() {
     return JSON.parse(JSON.stringify(DEFAULT_CONFIG));
 }
 
-// Allow env vars to override config file for AI settings
 export function getMergedAiConfig(config) {
     return {
         model: process.env.MEOWTERM_MODEL || process.env.OPENAI_MODEL || config.ai.model,
+        smallModel: process.env.MEOWTERM_SMALL_MODEL || config.ai.smallModel || 'gpt-4o-mini',
         apiKey: process.env.MEOWTERM_API_KEY || process.env.OPENAI_API_KEY || config.ai.apiKey,
         baseURL: process.env.MEOWTERM_BASE_URL || process.env.OPENAI_BASE_URL || config.ai.baseURL,
     };

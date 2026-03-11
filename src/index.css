@@ -232,6 +232,22 @@ body {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  position: relative;
+}
+
+#chat-messages:empty::before {
+  content: "Ask Anything Here";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: var(--text-muted);
+  font-family: var(--font-ui);
+  font-size: 16px;
+  font-weight: 500;
+  pointer-events: none;
+  opacity: 0.6;
+  letter-spacing: 0.5px;
 }
 
 #chat-messages::-webkit-scrollbar {
@@ -247,12 +263,16 @@ body {
   border-radius: 3px;
 }
 
-/* Message Bubbles */
+/* Message Texts */
 .message {
   display: flex;
-  flex-direction: column;
-  max-width: 85%;
+  flex-direction: row;
+  max-width: 100%;
   animation: messageSlideIn 0.25s ease-out;
+  font-family: var(--chat-font-family, var(--font-mono));
+  font-size: var(--chat-font-size, 12px);
+  line-height: 1.55;
+  gap: 8px;
 }
 
 @keyframes messageSlideIn {
@@ -266,72 +286,41 @@ body {
   }
 }
 
-.message.user {
-  align-self: flex-end;
+.message-prefix {
+  font-weight: bold;
+  color: var(--accent-primary);
+  white-space: pre;
+  flex-shrink: 0;
 }
 
-.message.assistant {
-  align-self: flex-start;
+.message.user .message-prefix {
+  color: var(--accent-secondary);
+}
+
+.message.error .message-prefix {
+  color: var(--danger);
 }
 
 .message-content {
-  padding: 10px 14px;
-  border-radius: var(--radius-md);
-  font-size: 13px;
-  line-height: 1.55;
+  flex: 1;
   word-wrap: break-word;
   white-space: pre-wrap;
-}
-
-.message.user .message-content {
-  background: var(--bg-user-bubble);
   color: var(--text-primary);
-  border-bottom-right-radius: 4px;
 }
 
-.message.assistant .message-content {
-  background: var(--bg-ai-bubble);
-  color: var(--text-primary);
-  border: 1px solid var(--border-color);
-  border-bottom-left-radius: 4px;
-}
-
-/* Tool Call Indicator */
-.tool-call {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 12px;
-  background: var(--bg-tool);
-  border-radius: var(--radius-sm);
-  border-left: 3px solid var(--accent-primary);
-  font-size: 12px;
-  color: var(--text-secondary);
-  font-family: var(--font-mono);
-  animation: messageSlideIn 0.2s ease-out;
-}
-
-.tool-call .tool-icon {
-  font-size: 14px;
-}
-
-.tool-call .tool-name {
-  color: var(--accent-primary);
-  font-weight: 500;
-}
-
-.tool-call .tool-args {
+.message.tool .message-content {
   color: var(--text-muted);
-  font-size: 11px;
 }
+
+
 
 /* Thinking Indicator */
 .thinking {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 14px;
-  font-size: 13px;
+  font-family: var(--chat-font-family, var(--font-mono));
+  font-size: var(--chat-font-size, 12px);
   color: var(--text-secondary);
   animation: messageSlideIn 0.2s ease-out;
 }
@@ -372,8 +361,6 @@ body {
 
 /* Error Message */
 .message.error .message-content {
-  background: rgba(255, 95, 95, 0.1);
-  border: 1px solid rgba(255, 95, 95, 0.3);
   color: var(--danger);
 }
 

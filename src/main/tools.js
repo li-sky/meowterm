@@ -90,17 +90,78 @@ export function typeKeyboard(ptyProcess, text) {
         return 'Error: No terminal process available';
     }
     try {
-        // Unescape literal \r, \n, \t strings that the AI might output
+        // Unescape special tokens the AI might output, and also convert natural newlines
         const unescapedText = text
-            .replace(/\\r/g, '\r')
-            .replace(/\\n/g, '\n')
-            .replace(/\\t/g, '\t')
-            .replace(/\\x1b/gi, '\x1b');
+            .replace(/<enter>/gi, '\r')
+            .replace(/<tab>/gi, '\t')
+            .replace(/<esc>/gi, '\x1b')
+            .replace(/\n/g, '\r');
 
         ptyProcess.write(unescapedText);
         return `Typed ${unescapedText.length} characters into terminal`;
     } catch (err) {
         return `Error typing to terminal: ${err.message}`;
+    }
+}
+
+/**
+ * Check if the terminal is at a shell prompt using a small LLM or heuristic fallback.
+ */
+async function checkTerminalReady(screenData, client, model) {
+    if (!screenData || typeof screenData !== 'string') return false;
+    
+    const lines = screenData.split(/\r?\n/).filter(line => line.trim().length > 0);
+    if (lines.length === 0) return true; // empty screen = ready
+
+    const lastLines = lines.slice(-5).join('\n');
+    
+    try {
+        const response = await client.chat.completions.create({
+            model: model || 'gpt-4o-mini',
+            messages: [
+                {
+                    role: 'system',
+                    content: 'You are a terminal state analyzer. Your only job is to determine whether the provided terminal tail (the last few lines of the screen) shows that the terminal is currently idle at a shell prompt waiting for user input, or if it is currently running a process, displaying output, or inside a TUI program like vim. Reply EXACTLY with "YES" if it is at a prompt, or "NO" if it is not.'
+                },
+                {
+                    role: 'user',
+                    content: lastLines
+                }
+            ],
+            temperature: 0,
+            max_tokens: 5,
+        });
+
+        const reply = (response.choices[0]?.message?.content || '').trim().toUpperCase();
+        return reply.includes('YES');
+    } catch (e) {
+        console.error('Error checking terminal state with LLM, falling back to heuristic:', e.message);
+        // Fallback: Check if the last line ends with common prompt characters
+        const lastLine = lines[lines.length - 1];
+        return /[$>#%❯➜]\s*$/.test(lastLine.trim());
+    }
+}
+
+/**
+ * Safely execute a shell command by checking terminal state first.
+ */
+export async function runCommand(mainWindow, ptyProcess, command, client, model) {
+    if (!ptyProcess) {
+        return 'Error: No terminal process available';
+    }
+    
+    try {
+        const screenData = await captureCurrentScreen(mainWindow);
+        const isReady = await checkTerminalReady(screenData, client, model);
+        
+        if (!isReady) {
+            return `Error: The terminal appears to be busy or running an application, cannot safely execute: "${command}". Use type_keyboard if you are purposefully interacting with a running application.`;
+        }
+        
+        ptyProcess.write(command + '\r');
+        return `Successfully executed command: ${command}`;
+    } catch (err) {
+        return `Error running command: ${err.message}`;
     }
 }
 
@@ -160,16 +221,34 @@ export const toolDefinitions = [
     {
         type: 'function',
         function: {
+            name: 'run_command',
+            description:
+                'Safely execute a shell command. It automatically checks if the terminal is ready at a prompt before typing. Use this for standard shell commands rather than type_keyboard.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    command: {
+                        type: 'string',
+                        description: 'The shell command to execute.',
+                    },
+                },
+                required: ['command'],
+            },
+        },
+    },
+    {
+        type: 'function',
+        function: {
             name: 'type_keyboard',
             description:
-                'Type text into the terminal. This sends keystrokes to the terminal as if the user typed them. Use \\r for Enter key. For example, to run a command, send "ls -la\\r".',
+                'Type text into the terminal. This sends keystrokes to the terminal as if the user typed them. Use <enter> for Enter key. For example, to run a command, send "ls -la<enter>".',
             parameters: {
                 type: 'object',
                 properties: {
                     text: {
                         type: 'string',
                         description:
-                            'The text to type into the terminal. Use \\r for Enter, \\t for Tab.',
+                            'The text to type into the terminal. Use <enter> for Enter, <tab> for Tab, <esc> for Escape.',
                     },
                 },
                 required: ['text'],

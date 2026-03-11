@@ -123,7 +123,10 @@ const createWindow = () => {
 
   // App Config
   ipcMain.handle('app:config', () => {
-    return appConfig.terminal;
+    return {
+      terminal: appConfig.terminal,
+      chat: appConfig.chat,
+    };
   });
 
   // AI: send message
@@ -153,9 +156,7 @@ const createWindow = () => {
 
   // AI: check if configured
   ipcMain.handle('ai:status', async () => {
-    const hasKey = !!(
-      process.env.MEOWTERM_API_KEY || process.env.OPENAI_API_KEY
-    );
+    const hasKey = !!aiService.config.apiKey;
     return {
       configured: hasKey,
       model: aiService.model,
