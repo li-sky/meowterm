@@ -60,6 +60,8 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout Code
@@ -98,10 +100,10 @@ jobs:
             ---
             [View full changelog](https://github.com/${{ github.repository }}/commits/${{ github.ref_name }})
           files: |
-            artifacts/windows/*.exe
-            artifacts/macos/*.zip
-            artifacts/linux/*.deb
-            artifacts/linux/*.rpm
+            artifacts/windows/**/*.exe
+            artifacts/macos/**/*.zip
+            artifacts/linux/**/*.deb
+            artifacts/linux/**/*.rpm
           draft: false
           prerelease: false
         env:
