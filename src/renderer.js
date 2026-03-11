@@ -64,8 +64,8 @@ window.api.onAiRequestScreen(() => {
   const buffer = term.buffer.active;
   const lines = [];
 
-  // Get visible viewport and up to 200 lines of scrollback
-  const startRow = Math.max(0, buffer.baseY - 200);
+  // Get visible viewport
+  const startRow = Math.max(0, buffer.baseY);
   const endRow = buffer.baseY + term.rows;
 
   for (let i = startRow; i < endRow; i++) {
@@ -81,6 +81,32 @@ window.api.onAiRequestScreen(() => {
   }
 
   window.api.sendAiScreenData(lines.join('\n'));
+});
+
+// History Capture for AI
+window.api.onAiRequestHistory((numLines) => {
+  const buffer = term.buffer.active;
+  const lines = [];
+
+  const requestedLines = Math.min(numLines || 200, 500);
+
+  // Get up to requestedLines
+  const startRow = Math.max(0, buffer.baseY + term.rows - requestedLines);
+  const endRow = buffer.baseY + term.rows;
+
+  for (let i = startRow; i < endRow; i++) {
+    const line = buffer.getLine(i);
+    if (line) {
+      lines.push(line.translateToString(true)); // true = trim right whitespace
+    }
+  }
+
+  // Remove trailing empty lines for a cleaner prompt
+  while (lines.length > 0 && lines[lines.length - 1].trim() === '') {
+    lines.pop();
+  }
+
+  window.api.sendAiHistoryData(lines.join('\n'));
 });
 
 // Fetch config and update terminal options
@@ -119,6 +145,7 @@ const chatPanel = document.getElementById('chat-panel');
 const chatMessages = document.getElementById('chat-messages');
 const chatInput = document.getElementById('chat-input');
 const sendBtn = document.getElementById('chat-send-btn');
+const stopBtn = document.getElementById('chat-stop-btn');
 const toggleBtn = document.getElementById('toggle-chat-btn');
 const clearBtn = document.getElementById('clear-chat-btn');
 const statusBadge = document.getElementById('ai-status-badge');
@@ -190,7 +217,8 @@ function addToolCall(name, args) {
   el.classList.add('tool-call');
 
   const icons = {
-    capture_screen: '📸',
+    capture_current_screen: '📸',
+    get_history_output: '📜',
     fetch_file: '📄',
     type_keyboard: '⌨️',
   };
@@ -235,7 +263,8 @@ async function sendMessage() {
   if (!text || isLoading) return;
 
   isLoading = true;
-  sendBtn.disabled = true;
+  sendBtn.style.display = 'none';
+  stopBtn.style.display = 'flex';
   chatInput.value = '';
   chatInput.style.height = 'auto';
 
@@ -247,7 +276,11 @@ async function sendMessage() {
     removeThinking();
 
     if (result.error) {
-      addMessage('error', `⚠️ ${result.error}`);
+      if (result.error.includes('AbortError')) {
+        addMessage('error', '⚠️ Generation stopped by user.');
+      } else {
+        addMessage('error', `⚠️ ${result.error}`);
+      }
     } else if (result.content) {
       addMessage('assistant', result.content);
     }
@@ -257,7 +290,8 @@ async function sendMessage() {
   }
 
   isLoading = false;
-  sendBtn.disabled = false;
+  sendBtn.style.display = 'flex';
+  stopBtn.style.display = 'none';
   chatInput.focus();
 }
 
@@ -270,6 +304,13 @@ window.api.onAiToolCall((toolCall) => {
 
 // Send button
 sendBtn.addEventListener('click', sendMessage);
+
+// Stop button
+stopBtn.addEventListener('click', () => {
+  if (isLoading) {
+    window.api.stopAiMessage();
+  }
+});
 
 // Enter to send, Shift+Enter for newline
 chatInput.addEventListener('keydown', (e) => {

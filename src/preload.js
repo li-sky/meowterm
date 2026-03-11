@@ -16,6 +16,7 @@ contextBridge.exposeInMainWorld('api', {
 
     // AI
     sendAiMessage: (message) => ipcRenderer.invoke('ai:send-message', message),
+    stopAiMessage: () => ipcRenderer.invoke('ai:abort-message'),
     clearAiHistory: () => ipcRenderer.invoke('ai:clear-history'),
     getAiStatus: () => ipcRenderer.invoke('ai:status'),
     onAiToolCall: (callback) => {
@@ -24,5 +25,9 @@ contextBridge.exposeInMainWorld('api', {
     onAiRequestScreen: (callback) => {
         ipcRenderer.on('ai:request-screen', () => callback());
     },
+    onAiRequestHistory: (callback) => {
+        ipcRenderer.on('ai:request-history', (_event, lines) => callback(lines));
+    },
     sendAiScreenData: (data) => ipcRenderer.send('ai:screen-data', data),
+    sendAiHistoryData: (data) => ipcRenderer.send('ai:history-data', data),
 });

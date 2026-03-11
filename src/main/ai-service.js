@@ -1,17 +1,18 @@
 import OpenAI from 'openai';
-import { toolDefinitions, captureScreen, fetchFile, typeKeyboard } from './tools.js';
+import { toolDefinitions, captureCurrentScreen, getHistoryOutput, fetchFile, typeKeyboard } from './tools.js';
 
 const SYSTEM_PROMPT = `You are MeowTerm AI 🐱, an intelligent terminal assistant embedded inside a terminal emulator.
 
 You have access to the following tools:
-- capture_screen: Read the current terminal output to understand what the user is seeing.
+- capture_current_screen: Read the current terminal output to understand what the user is seeing.
+- get_history_output: Read the historical terminal output. Takes an optional 'lines' parameter (max 500).
 - fetch_file: Read files or list directory contents from the filesystem.
 - type_keyboard: Type commands or text directly into the terminal. Use \\r for Enter key.
 
 Guidelines:
 - Be concise and helpful.
 - When the user asks you to run a command, use type_keyboard to type it followed by \\r.
-- When you need to understand the current state, use capture_screen first.
+- When you need to understand the current state, use capture_current_screen or get_history_output first.
 - When dealing with files, use fetch_file to read them.
 - Always explain what you're doing before executing actions.
 - Use markdown formatting in your responses.`;
@@ -22,6 +23,7 @@ export class AIService {
         this.conversationHistory = [];
         this.config = {};
         this.model = 'gpt-4o-mini';
+        this.abortController = null;
     }
 
     setConfig(config) {
@@ -62,6 +64,7 @@ export class AIService {
         });
 
         try {
+            this.abortController = new AbortController();
             let messages = [
                 { role: 'system', content: SYSTEM_PROMPT },
                 ...this.conversationHistory,
@@ -70,11 +73,19 @@ export class AIService {
             // Tool loop: keep calling until we get a text-only response
             const MAX_ITERATIONS = 50;
             for (let i = 0; i < MAX_ITERATIONS; i++) {
+                if (this.abortController.signal.aborted) {
+                    throw new Error('AbortError');
+                }
+
                 const response = await this.client.chat.completions.create({
                     model: this.model,
                     messages,
                     tools: toolDefinitions,
-                });
+                }, { signal: this.abortController.signal });
+
+                if (this.abortController.signal.aborted) {
+                    throw new Error('AbortError');
+                }
 
                 const choice = response.choices[0];
                 const assistantMessage = choice.message;
@@ -103,8 +114,11 @@ export class AIService {
                     }
 
                     switch (name) {
-                        case 'capture_screen':
-                            result = await captureScreen(mainWindow);
+                        case 'capture_current_screen':
+                            result = await captureCurrentScreen(mainWindow);
+                            break;
+                        case 'get_history_output':
+                            result = await getHistoryOutput(mainWindow, args.lines);
                             break;
                         case 'fetch_file':
                             result = fetchFile(args.path, cwd);
@@ -126,7 +140,18 @@ export class AIService {
 
             return { content: '(Reached maximum tool call iterations)' };
         } catch (err) {
+            if (err.name === 'AbortError' || err.message === 'AbortError') {
+                return { error: 'AbortError' };
+            }
             return { error: `AI error: ${err.message}` };
+        } finally {
+            this.abortController = null;
+        }
+    }
+
+    abortMessage() {
+        if (this.abortController) {
+            this.abortController.abort();
         }
     }
 

@@ -139,6 +139,12 @@ const createWindow = () => {
     return result;
   });
 
+  // AI: abort message
+  ipcMain.handle('ai:abort-message', async () => {
+    aiService.abortMessage();
+    return { success: true };
+  });
+
   // AI: clear history
   ipcMain.handle('ai:clear-history', async () => {
     aiService.clearHistory();

@@ -5,7 +5,7 @@ import path from 'node:path';
  * Capture the current terminal screen content.
  * Requests the visible screen from the renderer's xterm.js instance via IPC.
  */
-export async function captureScreen(mainWindow) {
+export async function captureCurrentScreen(mainWindow) {
     return new Promise((resolve) => {
         // Send request to renderer
         mainWindow.webContents.send('ai:request-screen');
@@ -18,6 +18,26 @@ export async function captureScreen(mainWindow) {
 
         // Timeout just in case
         setTimeout(() => resolve('(screen capture timeout)'), 2000);
+    });
+}
+
+/**
+ * Capture the history terminal screen content.
+ * Requests historical lines from the renderer's xterm.js instance via IPC.
+ */
+export async function getHistoryOutput(mainWindow, lines = 200) {
+    return new Promise((resolve) => {
+        // Send request to renderer
+        mainWindow.webContents.send('ai:request-history', lines);
+
+        // Listen for the one-time response
+        const { ipcMain } = require('electron');
+        ipcMain.once('ai:history-data', (_event, data) => {
+            resolve(data || '(terminal history is empty)');
+        });
+
+        // Timeout just in case
+        setTimeout(() => resolve('(history capture timeout)'), 2000);
     });
 }
 
@@ -91,12 +111,30 @@ export const toolDefinitions = [
     {
         type: 'function',
         function: {
-            name: 'capture_screen',
+            name: 'capture_current_screen',
             description:
-                'Capture the current terminal screen content. Returns the text currently visible in the terminal buffer.',
+                'Capture the current terminal screen content. Returns only the text currently visible in the terminal buffer.',
             parameters: {
                 type: 'object',
                 properties: {},
+                required: [],
+            },
+        },
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'get_history_output',
+            description:
+                'Get the history output of the terminal. Returns up to the specified number of historical lines (max 500).',
+            parameters: {
+                type: 'object',
+                properties: {
+                    lines: {
+                        type: 'number',
+                        description: 'Number of lines to retrieve (maximum 500). Default is usually 200.',
+                    },
+                },
                 required: [],
             },
         },
