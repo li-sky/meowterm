@@ -71,13 +71,134 @@ body {
   overflow: hidden;
 }
 
+/* === Tabs === */
+#tabs-container {
+  display: flex;
+  align-items: center;
+  background-color: var(--bg-primary);
+  padding: 0 8px;
+  height: 36px;
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--border-color);
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+#tabs-container::-webkit-scrollbar {
+  height: 4px;
+}
+#tabs-container::-webkit-scrollbar-thumb {
+  background: var(--bg-secondary);
+  border-radius: 4px;
+}
+
+#tabs-list {
+  display: flex;
+  height: 100%;
+}
+
+.tab {
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  min-width: 100px;
+  max-width: 200px;
+  height: 100%;
+  color: var(--text-muted);
+  font-size: 13px;
+  cursor: pointer;
+  border-right: 1px solid var(--border-color);
+  border-left: 1px solid transparent;
+  user-select: none;
+  transition: background-color 0.2s, color 0.2s;
+}
+
+.tab:hover {
+  background-color: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+.tab.active {
+  background-color: var(--bg-tertiary);
+  color: var(--accent-primary);
+  border-bottom: 2px solid var(--accent-primary);
+}
+
+.tab-title {
+  flex-grow: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.tab-close {
+  display: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  text-align: center;
+  line-height: 14px;
+  font-size: 14px;
+  margin-left: 6px;
+  color: var(--text-muted);
+}
+.tab:hover .tab-close,
+.tab.active .tab-close {
+  display: block;
+}
+.tab-close:hover {
+  background-color: rgba(255, 95, 95, 0.2);
+  color: var(--danger);
+}
+
+#new-tab-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  margin-left: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+#new-tab-btn:hover {
+  background-color: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
 /* === Terminal === */
 #terminal-container {
   flex: 1;
-  min-height: 100px;
+  min-height: 0;
+  position: relative;
   overflow: hidden;
   background: var(--bg-primary);
   padding: 4px 0 0 4px;
+}
+
+.terminal-wrapper {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  right: 0;
+  bottom: 0;
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.terminal-wrapper.active {
+  visibility: visible;
+  opacity: 1;
+  pointer-events: auto;
 }
 
 #terminal {
@@ -315,8 +436,17 @@ body {
   color: var(--text-muted);
 }
 
-
-
+.tool-hint {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 6px;
+  font-size: 10px;
+  border-radius: 4px;
+  background: rgba(124, 92, 255, 0.15);
+  color: var(--accent-primary);
+  font-weight: 500;
+  vertical-align: middle;
+}
 /* Thinking Indicator */
 .thinking {
   display: flex;
@@ -478,4 +608,58 @@ body {
 .message-content pre code {
   background: none;
   padding: 0;
+}
+
+/* === Think Details === */
+.think-details {
+  margin: 4px 0;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.think-details summary {
+  padding: 6px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  cursor: pointer;
+  user-select: none;
+  background: var(--bg-secondary);
+  transition: color 0.2s, background 0.2s;
+  list-style: none;
+  display: flex;
+  align-items: center;
+}
+
+.think-details summary::-webkit-details-marker {
+  display: none;
+}
+
+.think-details summary::before {
+  content: '▶';
+  display: inline-block;
+  font-size: 8px;
+  margin-right: 6px;
+  transition: transform 0.2s;
+}
+
+.think-details[open] summary::before {
+  transform: rotate(90deg);
+}
+
+.think-details summary:hover {
+  color: var(--text-secondary);
+  background: var(--bg-tertiary);
+}
+
+.think-content {
+  padding: 8px 10px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-style: italic;
+  border-top: 1px solid var(--border-color);
+  background: rgba(0, 0, 0, 0.1);
+  white-space: pre-wrap;
 }

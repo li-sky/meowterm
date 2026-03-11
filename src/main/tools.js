@@ -105,65 +105,37 @@ export function typeKeyboard(ptyProcess, text) {
 }
 
 /**
- * Check if the terminal is at a shell prompt using a small LLM or heuristic fallback.
+ * Execute a shell command and capture its output.
  */
-async function checkTerminalReady(screenData, client, model) {
-    if (!screenData || typeof screenData !== 'string') return false;
-    
-    const lines = screenData.split(/\r?\n/).filter(line => line.trim().length > 0);
-    if (lines.length === 0) return true; // empty screen = ready
-
-    const lastLines = lines.slice(-5).join('\n');
-    
-    try {
-        const response = await client.chat.completions.create({
-            model: model || 'gpt-4o-mini',
-            messages: [
-                {
-                    role: 'system',
-                    content: 'You are a terminal state analyzer. Your only job is to determine whether the provided terminal tail (the last few lines of the screen) shows that the terminal is currently idle at a shell prompt waiting for user input, or if it is currently running a process, displaying output, or inside a TUI program like vim. Reply EXACTLY with "YES" if it is at a prompt, or "NO" if it is not.'
-                },
-                {
-                    role: 'user',
-                    content: lastLines
-                }
-            ],
-            temperature: 0,
-            max_tokens: 5,
-        });
-
-        const reply = (response.choices[0]?.message?.content || '').trim().toUpperCase();
-        return reply.includes('YES');
-    } catch (e) {
-        console.error('Error checking terminal state with LLM, falling back to heuristic:', e.message);
-        // Fallback: Check if the last line ends with common prompt characters
-        const lastLine = lines[lines.length - 1];
-        return /[$>#%❯➜]\s*$/.test(lastLine.trim());
-    }
-}
-
-/**
- * Safely execute a shell command by checking terminal state first.
- * If safe, executes it and waits temporarily to capture resulting output.
- */
-export async function runCommand(mainWindow, ptyProcess, command, client, model) {
+export async function runCommand(mainWindow, ptyProcess, command, abortSignal, debug = false) {
+    if (debug) console.log(`[AI Debug] runCommand: executing command: "${command}"`);
     if (!ptyProcess) {
+        if (debug) console.log(`[AI Debug] runCommand: Error: No terminal process available`);
         return 'Error: No terminal process available';
     }
     
     try {
-        const screenData = await captureCurrentScreen(mainWindow);
-        const isReady = await checkTerminalReady(screenData, client, model);
-        
-        if (!isReady) {
-            return `Error: The terminal appears to be busy or running an application, cannot safely execute: "${command}". Use type_keyboard if you are purposefully interacting with a running application.`;
-        }
-        
-        return new Promise((resolve) => {
+        if (debug) console.log(`[AI Debug] runCommand: Starting command listener...`);
+        return await new Promise((resolve, reject) => {
             let output = [];
             let finished = false;
             let timeoutId;
             let debounceId;
+            
+            const onAbort = () => {
+                if (finished) return;
+                if (debug) console.log(`[AI Debug] runCommand: user triggered abort stop! Sending Ctrl+C...`);
+                ptyProcess.write('\x03'); // Send Ctrl+C
+                finish('(Command execution aborted by user)');
+            };
+
+            if (abortSignal) {
+                if (abortSignal.aborted) {
+                    if (debug) console.log(`[AI Debug] runCommand: abort signal already triggered before start!`);
+                    return resolve('(Command execution aborted by user)');
+                }
+                abortSignal.addEventListener('abort', onAbort);
+            }
             
             // Listen for data
             const disposable = ptyProcess.onData((data) => {
@@ -172,27 +144,44 @@ export async function runCommand(mainWindow, ptyProcess, command, client, model)
                     
                     // Reset calm-down debounce timer
                     clearTimeout(debounceId);
-                    debounceId = setTimeout(() => finish(), 1000); // 1s of no output = done
+                    debounceId = setTimeout(() => {
+                        if (debug) console.log(`[AI Debug] runCommand: 1s debounce timeout reached (no recent output). Finishing command.`);
+                        finish();
+                    }, 1000); // 1s of no output = done
                 }
             });
             
             // Initial write
+            if (debug) console.log(`[AI Debug] runCommand: sending command string to PTY stdin...`);
             ptyProcess.write(command + '\r');
             
             // Absolute max wait of 5 seconds
-            timeoutId = setTimeout(() => finish(), 5000);
+            timeoutId = setTimeout(() => {
+                if (debug) console.log(`[AI Debug] runCommand: absolute 5-second timeout reached. Finishing command.`);
+                finish();
+            }, 5000);
             
-            function finish() {
+            function finish(overrideText) {
                 if (finished) return;
                 finished = true;
                 clearTimeout(timeoutId);
                 clearTimeout(debounceId);
                 disposable.dispose();
+                if (abortSignal) {
+                    abortSignal.removeEventListener('abort', onAbort);
+                }
+                
+                if (overrideText) {
+                    if (debug) console.log(`[AI Debug] runCommand: finished with override text: ${overrideText}`);
+                    return resolve(overrideText);
+                }
                 
                 const finalStr = output.join('').replace(/\r/g, '');
                 
                 // Return only the tail if it's very long
                 const lines = finalStr.split('\n');
+                if (debug) console.log(`[AI Debug] runCommand: execution collected ${lines.length} lines of output (${finalStr.length} chars).`);
+                
                 if (lines.length > 200) {
                     resolve(lines.slice(-200).join('\n') + '\n\n(output truncated, showing last 200 lines)');
                 } else {
@@ -201,6 +190,11 @@ export async function runCommand(mainWindow, ptyProcess, command, client, model)
             }
         });
     } catch (err) {
+        if (err.name === 'AbortError' || err.message === 'AbortError') {
+            if (debug) console.log(`[AI Debug] runCommand: aborted by user via catch block bubble up.`);
+            throw err;
+        }
+        if (debug) console.log(`[AI Debug] runCommand: fatal error: ${err.message}`);
         return `Error running command: ${err.message}`;
     }
 }

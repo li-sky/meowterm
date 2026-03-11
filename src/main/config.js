@@ -8,9 +8,10 @@ const DEFAULT_CONFIG = {
     ai: {
         provider: 'openai', // Optional for now
         model: 'gpt-4o-mini',
-        smallModel: 'gpt-4o-mini',
+
         apiKey: '',
         baseURL: 'https://api.openai.com/v1',
+        timeout: 120000,
     },
     terminal: {
         shell: process.platform === 'win32' ? 'pwsh.exe' : '/bin/bash',
@@ -52,8 +53,9 @@ export function loadConfig() {
 export function getMergedAiConfig(config) {
     return {
         model: process.env.MEOWTERM_MODEL || process.env.OPENAI_MODEL || config.ai.model,
-        smallModel: process.env.MEOWTERM_SMALL_MODEL || config.ai.smallModel || 'gpt-4o-mini',
+
         apiKey: process.env.MEOWTERM_API_KEY || process.env.OPENAI_API_KEY || config.ai.apiKey,
         baseURL: process.env.MEOWTERM_BASE_URL || process.env.OPENAI_BASE_URL || config.ai.baseURL,
+        timeout: parseInt(process.env.MEOWTERM_TIMEOUT) || config.ai.timeout || 120000,
     };
 }

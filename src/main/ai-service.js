@@ -20,19 +20,20 @@ Guidelines:
 export class AIService {
     constructor() {
         this.client = null;
-        this.conversationHistory = [];
+        this.conversationHistories = new Map(); // sessionId -> array of messages
 
 
         this.config = {};
         this.model = 'gpt-4o-mini';
-        this.smallModel = 'gpt-4o-mini';
-        this.abortController = null;
+
+        this.abortControllers = new Map(); // sessionId -> AbortController
     }
 
     setConfig(config) {
         this.config = config;
         this.model = config.model || 'gpt-4o-mini';
-        this.smallModel = config.smallModel || 'gpt-4o-mini';
+
+        this.timeout = config.timeout || 120000;
     }
 
     initialize() {
@@ -54,40 +55,74 @@ export class AIService {
      * Send a message and run the tool loop until we get a text response.
      * Calls onToolCall for each tool execution and returns the final text.
      */
-    async sendMessage(userMessage, { ptyProcess, mainWindow, cwd, onToolCall }) {
+    async sendMessage(userMessage, { sessionId, ptyProcess, mainWindow, cwd, onToolCall }) {
+        const debug = this.config.debug;
+        if (debug) console.log(`[AI Debug] sendMessage: received user message for session ${sessionId}: "${userMessage.slice(0, 80)}..."`);
+
         if (!this.client) {
+            if (debug) console.log(`[AI Debug] sendMessage: client not initialized, initializing...`);
             const init = this.initialize();
             if (!init.success) {
+                if (debug) console.log(`[AI Debug] sendMessage: initialization failed: ${init.error}`);
                 return { error: init.error };
             }
         }
 
-        this.conversationHistory.push({
+        if (!this.conversationHistories.has(sessionId)) {
+            this.conversationHistories.set(sessionId, []);
+        }
+        const history = this.conversationHistories.get(sessionId);
+
+        history.push({
             role: 'user',
             content: userMessage,
         });
 
+        const abortController = new AbortController();
+        this.abortControllers.set(sessionId, abortController);
+
         try {
-            this.abortController = new AbortController();
             let messages = [
                 { role: 'system', content: SYSTEM_PROMPT },
-                ...this.conversationHistory,
+                ...history,
             ];
 
             // Tool loop: keep calling until we get a text-only response
             const MAX_ITERATIONS = 50;
             for (let i = 0; i < MAX_ITERATIONS; i++) {
-                if (this.abortController.signal.aborted) {
+                if (debug) console.log(`[AI Debug] sendMessage: === iteration ${i + 1}/${MAX_ITERATIONS} ===`);
+
+                if (abortController.signal.aborted) {
+                    if (debug) console.log(`[AI Debug] sendMessage: abort detected at loop start.`);
                     throw new Error('AbortError');
                 }
 
-                const response = await this.client.chat.completions.create({
+                if (debug) console.log(`[AI Debug] sendMessage: sending LLM request (model: ${this.model}, messages: ${messages.length})...`);
+                const requestPromise = this.client.chat.completions.create({
                     model: this.model,
                     messages,
                     tools: toolDefinitions,
-                }, { signal: this.abortController.signal });
+                }, { signal: abortController.signal });
 
-                if (this.abortController.signal.aborted) {
+                let timeoutId;
+                const timeoutPromise = new Promise((_, reject) => {
+                    timeoutId = setTimeout(() => {
+                        if (debug) console.log(`[AI Debug] sendMessage: timeout reached (${this.timeout}ms). Aborting...`);
+                        abortController.abort();
+                        reject(new Error('TimeoutError'));
+                    }, this.timeout);
+                });
+
+                let response;
+                try {
+                    response = await Promise.race([requestPromise, timeoutPromise]);
+                    if (debug) console.log(`[AI Debug] sendMessage: LLM response received.`);
+                } finally {
+                    clearTimeout(timeoutId);
+                }
+
+                if (abortController.signal.aborted && !response) {
+                    if (debug) console.log(`[AI Debug] sendMessage: abort detected after race, no response.`);
                     throw new Error('AbortError');
                 }
 
@@ -100,18 +135,23 @@ export class AIService {
                 // If no tool calls, we're done
                 if (!assistantMessage.tool_calls || assistantMessage.tool_calls.length === 0) {
                     const content = assistantMessage.content || '';
-                    this.conversationHistory.push({
+                    if (debug) console.log(`[AI Debug] sendMessage: final text response received (${content.length} chars). Done.`);
+                    history.push({
                         role: 'assistant',
                         content,
                     });
                     return { content };
                 }
 
+                if (debug) console.log(`[AI Debug] sendMessage: ${assistantMessage.tool_calls.length} tool call(s) requested.`);
+
                 // Execute tool calls
                 for (const toolCall of assistantMessage.tool_calls) {
                     const name = toolCall.function.name;
                     const args = JSON.parse(toolCall.function.arguments);
                     let result;
+
+                    if (debug) console.log(`[AI Debug] sendMessage: executing tool "${name}" with args: ${JSON.stringify(args).slice(0, 200)}`);
 
                     if (onToolCall) {
                         onToolCall({ name, args });
@@ -131,11 +171,14 @@ export class AIService {
                             result = typeKeyboard(ptyProcess, args.text);
                             break;
                         case 'run_command':
-                            result = await runCommand(mainWindow, ptyProcess, args.command, this.client, this.smallModel);
+                            result = await runCommand(mainWindow, ptyProcess, args.command, abortController.signal, debug);
                             break;
                         default:
                             result = `Unknown tool: ${name}`;
                     }
+
+                    const resultPreview = typeof result === 'string' ? result.slice(0, 200) : JSON.stringify(result).slice(0, 200);
+                    if (debug) console.log(`[AI Debug] sendMessage: tool "${name}" returned (${typeof result === 'string' ? result.length : '?'} chars): ${resultPreview}`);
 
                     messages.push({
                         role: 'tool',
@@ -145,24 +188,38 @@ export class AIService {
                 }
             }
 
+            if (debug) console.log(`[AI Debug] sendMessage: reached max iterations (${MAX_ITERATIONS}).`);
             return { content: '(Reached maximum tool call iterations)' };
         } catch (err) {
             if (err.name === 'AbortError' || err.message === 'AbortError') {
+                if (debug) console.log(`[AI Debug] sendMessage: aborted by user.`);
                 return { error: 'AbortError' };
             }
+            if (err.message === 'TimeoutError') {
+                if (debug) console.log(`[AI Debug] sendMessage: timed out after ${this.timeout / 1000}s.`);
+                return { error: `Request timed out after ${this.timeout / 1000} seconds.` };
+            }
+            if (debug) console.log(`[AI Debug] sendMessage: error: ${err.message}`);
             return { error: `AI error: ${err.message}` };
         } finally {
-            this.abortController = null;
+            if (debug) console.log(`[AI Debug] sendMessage: cleanup done for session ${sessionId}.`);
+            this.abortControllers.delete(sessionId);
         }
     }
 
-    abortMessage() {
-        if (this.abortController) {
-            this.abortController.abort();
+    abortMessage(sessionId) {
+        const controller = this.abortControllers.get(sessionId);
+        if (controller) {
+            controller.abort();
+            this.abortControllers.delete(sessionId);
         }
     }
 
-    clearHistory() {
-        this.conversationHistory = [];
+    clearHistory(sessionId) {
+        if (sessionId) {
+            this.conversationHistories.set(sessionId, []);
+        } else {
+            this.conversationHistories.clear();
+        }
     }
 }

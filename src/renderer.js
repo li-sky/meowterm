@@ -8,74 +8,209 @@ import { WebLinksAddon } from '@xterm/addon-web-links';
 // Terminal Setup
 // =====================
 
-const term = new Terminal({
-  fontFamily: "'JetBrains Mono', 'Cascadia Code', 'Fira Code', monospace",
-  fontSize: 14,
-  lineHeight: 1.3,
-  cursorBlink: true,
-  cursorStyle: 'bar',
-  theme: {
-    background: '#0d0d0d',
-    foreground: '#e8e8e8',
-    cursor: '#7c5cff',
-    cursorAccent: '#0d0d0d',
-    selectionBackground: 'rgba(124, 92, 255, 0.3)',
-    selectionForeground: '#ffffff',
-    black: '#1a1a2e',
-    brightBlack: '#4a4a5a',
-    red: '#ff5f5f',
-    brightRed: '#ff8080',
-    green: '#00d4aa',
-    brightGreen: '#33e0be',
-    yellow: '#ffd866',
-    brightYellow: '#ffe099',
-    blue: '#7c5cff',
-    brightBlue: '#9b82ff',
-    magenta: '#e06caa',
-    brightMagenta: '#e899c4',
-    cyan: '#56d8c9',
-    brightCyan: '#7ee3d8',
-    white: '#cccccc',
-    brightWhite: '#ffffff',
-  },
-  allowTransparency: true,
-  scrollback: 5000,
+// =====================
+// Session Management
+// =====================
+
+const sessions = new Map(); // sessionId -> { term, fitAddon, tabEl, wrapperEl }
+let activeSessionId = null;
+
+const tabsListEl = document.getElementById('tabs-list');
+const newTabBtn = document.getElementById('new-tab-btn');
+const terminalContainerEl = document.getElementById('terminal-container');
+
+// Global config cache
+let currentConfig = null;
+
+function createTerminalInstance() {
+  const term = new Terminal({
+    fontFamily: currentConfig?.terminal?.fontFamily || "'JetBrains Mono', 'Cascadia Code', 'Fira Code', monospace",
+    fontSize: currentConfig?.terminal?.fontSize || 14,
+    lineHeight: 1.3,
+    cursorBlink: true,
+    cursorStyle: 'bar',
+    theme: {
+      background: '#0d0d0d',
+      foreground: '#e8e8e8',
+      cursor: '#7c5cff',
+      cursorAccent: '#0d0d0d',
+      selectionBackground: 'rgba(124, 92, 255, 0.3)',
+      selectionForeground: '#ffffff',
+      black: '#1a1a2e',
+      brightBlack: '#4a4a5a',
+      red: '#ff5f5f',
+      brightRed: '#ff8080',
+      green: '#00d4aa',
+      brightGreen: '#33e0be',
+      yellow: '#ffd866',
+      brightYellow: '#ffe099',
+      blue: '#7c5cff',
+      brightBlue: '#9b82ff',
+      magenta: '#e06caa',
+      brightMagenta: '#e899c4',
+      cyan: '#56d8c9',
+      brightCyan: '#7ee3d8',
+      white: '#cccccc',
+      brightWhite: '#ffffff',
+    },
+    allowTransparency: true,
+    scrollback: 5000,
+  });
+
+  const fitAddon = new FitAddon();
+  term.loadAddon(fitAddon);
+  term.loadAddon(new WebLinksAddon());
+
+  return { term, fitAddon };
+}
+
+function switchSession(sessionId) {
+  if (activeSessionId === sessionId) return;
+
+  // Deactivate old
+  if (activeSessionId && sessions.has(activeSessionId)) {
+    const oldSession = sessions.get(activeSessionId);
+    oldSession.tabEl.classList.remove('active');
+    oldSession.wrapperEl.classList.remove('active');
+  }
+
+  activeSessionId = sessionId;
+
+  // Activate new
+  if (sessions.has(sessionId)) {
+    const newSession = sessions.get(sessionId);
+    newSession.tabEl.classList.add('active');
+    newSession.wrapperEl.classList.add('active');
+    
+    // Fit and focus after making it visible
+    setTimeout(() => {
+      newSession.fitAddon.fit();
+      newSession.term.focus();
+    }, 10);
+    
+    // Swap chat history UI
+    loadChatHistory(sessionId);
+  }
+}
+
+function createSessionUI(sessionId, title = 'Terminal') {
+  // Tab UI
+  const tabEl = document.createElement('div');
+  tabEl.classList.add('tab');
+  tabEl.innerHTML = `
+    <span class="tab-title">${title}</span>
+    <span class="tab-close" title="Close Session">×</span>
+  `;
+
+  tabEl.addEventListener('click', (e) => {
+    if (e.target.classList.contains('tab-close')) {
+      closeSession(sessionId);
+    } else {
+      switchSession(sessionId);
+    }
+  });
+
+  tabsListEl.appendChild(tabEl);
+
+  // Terminal UI
+  const wrapperEl = document.createElement('div');
+  wrapperEl.classList.add('terminal-wrapper');
+  terminalContainerEl.appendChild(wrapperEl);
+
+  const { term, fitAddon } = createTerminalInstance();
+  term.open(wrapperEl);
+
+  const sessionData = { term, fitAddon, tabEl, wrapperEl };
+  sessions.set(sessionId, sessionData);
+
+  // Wire PTY I/O
+  term.onData((data) => window.api.ptyWrite(sessionId, data));
+  term.onResize(({ cols, rows }) => window.api.ptyResize(sessionId, cols, rows));
+
+  return sessionData;
+}
+
+function closeSession(sessionId) {
+  if (!sessions.has(sessionId)) return;
+
+  // 1. Tell backend to kill process
+  window.api.closePty(sessionId);
+
+  // 2. Remove UI
+  const session = sessions.get(sessionId);
+  session.term.dispose();
+  session.tabEl.remove();
+  session.wrapperEl.remove();
+  sessions.delete(sessionId);
+  
+  // Clear local chat history
+  chatHistories.delete(sessionId);
+
+  // 3. Switch to another tab if we closed the active one
+  if (activeSessionId === sessionId) {
+    activeSessionId = null;
+    const remainingIds = Array.from(sessions.keys());
+    if (remainingIds.length > 0) {
+      switchSession(remainingIds[remainingIds.length - 1]);
+    } else {
+      // If no tabs left, clear chat
+      chatMessages.innerHTML = '';
+    }
+  }
+}
+
+// Global PTY Event Listeners
+window.api.onPtyData((sessionId, data) => {
+  const session = sessions.get(sessionId);
+  if (session) {
+    session.term.write(data);
+  }
 });
 
-const fitAddon = new FitAddon();
-term.loadAddon(fitAddon);
-term.loadAddon(new WebLinksAddon());
-
-const terminalEl = document.getElementById('terminal');
-term.open(terminalEl);
-
-// Fit on load
-setTimeout(() => fitAddon.fit(), 100);
-
-// Wire PTY I/O
-term.onData((data) => window.api.ptyWrite(data));
-window.api.onPtyData((data) => term.write(data));
-window.api.onPtyExit((code) => {
-  term.write(`\r\n\x1b[31m[Process exited with code ${code}]\x1b[0m\r\n`);
+window.api.onPtyExit((sessionId, code) => {
+  const session = sessions.get(sessionId);
+  if (session) {
+    session.term.write(`\r\n\x1b[31m[Process exited with code ${code}]\x1b[0m\r\n`);
+  }
 });
 
-// Screen Capture for AI
+// Restore Sessions on Load
+window.api.onRestoreSessions((restoredSessions) => {
+  if (restoredSessions && restoredSessions.length > 0) {
+    restoredSessions.forEach(s => {
+      createSessionUI(s.id);
+    });
+    // Switch to first tab
+    switchSession(restoredSessions[0].id);
+  }
+});
+
+// New Tab Button
+newTabBtn.addEventListener('click', () => {
+  const newId = 'session-' + Date.now();
+  createSessionUI(newId);
+  window.api.createPty(newId, null);
+  switchSession(newId);
+});
+
+// Screen Capture for AI (Active Session)
 window.api.onAiRequestScreen(() => {
+  if (!activeSessionId || !sessions.has(activeSessionId)) return;
+  const term = sessions.get(activeSessionId).term;
+  
   const buffer = term.buffer.active;
   const lines = [];
 
-  // Get visible viewport
   const startRow = Math.max(0, buffer.baseY);
   const endRow = buffer.baseY + term.rows;
 
   for (let i = startRow; i < endRow; i++) {
     const line = buffer.getLine(i);
     if (line) {
-      lines.push(line.translateToString(true)); // true = trim right whitespace
+      lines.push(line.translateToString(true));
     }
   }
 
-  // Remove trailing empty lines for a cleaner prompt
   while (lines.length > 0 && lines[lines.length - 1].trim() === '') {
     lines.pop();
   }
@@ -83,25 +218,25 @@ window.api.onAiRequestScreen(() => {
   window.api.sendAiScreenData(lines.join('\n'));
 });
 
-// History Capture for AI
+// History Capture for AI (Active Session)
 window.api.onAiRequestHistory((numLines) => {
+  if (!activeSessionId || !sessions.has(activeSessionId)) return;
+  const term = sessions.get(activeSessionId).term;
+
   const buffer = term.buffer.active;
   const lines = [];
-
   const requestedLines = Math.min(numLines || 200, 500);
 
-  // Get up to requestedLines
   const startRow = Math.max(0, buffer.baseY + term.rows - requestedLines);
   const endRow = buffer.baseY + term.rows;
 
   for (let i = startRow; i < endRow; i++) {
     const line = buffer.getLine(i);
     if (line) {
-      lines.push(line.translateToString(true)); // true = trim right whitespace
+      lines.push(line.translateToString(true));
     }
   }
 
-  // Remove trailing empty lines for a cleaner prompt
   while (lines.length > 0 && lines[lines.length - 1].trim() === '') {
     lines.pop();
   }
@@ -109,23 +244,28 @@ window.api.onAiRequestHistory((numLines) => {
   window.api.sendAiHistoryData(lines.join('\n'));
 });
 
-// Fetch config and update terminal options
+// Config and options
 async function applyConfig() {
   try {
-    const config = await window.api.getAppConfig();
-    if (config) {
-      if (config.terminal?.fontFamily) term.options.fontFamily = config.terminal.fontFamily;
-      if (config.terminal?.fontSize) term.options.fontSize = config.terminal.fontSize;
-
-      if (config.chat?.fontFamily) {
-        document.documentElement.style.setProperty('--chat-font-family', config.chat.fontFamily);
-      }
-      if (config.chat?.fontSize) {
-        document.documentElement.style.setProperty('--chat-font-size', config.chat.fontSize + 'px');
+    currentConfig = await window.api.getAppConfig();
+    if (currentConfig) {
+      // Update all existing terminals
+      for (const session of sessions.values()) {
+        if (currentConfig.terminal?.fontFamily) session.term.options.fontFamily = currentConfig.terminal.fontFamily;
+        if (currentConfig.terminal?.fontSize) session.term.options.fontSize = currentConfig.terminal.fontSize;
       }
 
-      // Re-fit in case font size changed
-      fitAddon.fit();
+      if (currentConfig.chat?.fontFamily) {
+        document.documentElement.style.setProperty('--chat-font-family', currentConfig.chat.fontFamily);
+      }
+      if (currentConfig.chat?.fontSize) {
+        document.documentElement.style.setProperty('--chat-font-size', currentConfig.chat.fontSize + 'px');
+      }
+
+      // Re-fit active
+      if (activeSessionId && sessions.has(activeSessionId)) {
+        sessions.get(activeSessionId).fitAddon.fit();
+      }
     }
   } catch (e) {
     console.error('Failed to load config', e);
@@ -135,14 +275,20 @@ applyConfig();
 
 // Handle resize
 const resizeObserver = new ResizeObserver(() => {
-  try {
-    fitAddon.fit();
-    window.api.ptyResize(term.cols, term.rows);
-  } catch (e) {
-    // ignore
+  if (activeSessionId && sessions.has(activeSessionId)) {
+    const session = sessions.get(activeSessionId);
+    try {
+      session.fitAddon.fit();
+      // Only resize PTY if term is fully initialized
+      if (session.term.cols && session.term.rows) {
+        window.api.ptyResize(activeSessionId, session.term.cols, session.term.rows);
+      }
+    } catch (e) {
+      // ignore
+    }
   }
 });
-resizeObserver.observe(terminalEl);
+resizeObserver.observe(terminalContainerEl);
 
 // =====================
 // Chat Panel
@@ -188,17 +334,41 @@ toggleBtn.addEventListener('click', () => {
   setTimeout(() => fitAddon.fit(), 250);
 });
 
+const chatHistories = new Map(); // sessionId -> array of { html, type }
+
 // Clear chat
 clearBtn.addEventListener('click', async () => {
+  if (!activeSessionId) return;
   chatMessages.innerHTML = '';
-  await window.api.clearAiHistory();
+  chatHistories.set(activeSessionId, []);
+  await window.api.clearAiHistory(activeSessionId);
 });
 
-// Ensure chat is empty on load for the placeholder styling to work
-chatMessages.innerHTML = '';
+// Add message to local cache and DOM
+function saveToHistory(sessionId, htmlStr, type = 'message') {
+  if (!chatHistories.has(sessionId)) {
+    chatHistories.set(sessionId, []);
+  }
+  chatHistories.get(sessionId).push({ html: htmlStr, type });
+}
 
-// Add message to chat
+function loadChatHistory(sessionId) {
+  chatMessages.innerHTML = '';
+  const history = chatHistories.get(sessionId) || [];
+  history.forEach(item => {
+    // we use a temp div to parse the html string
+    const temp = document.createElement('div');
+    temp.innerHTML = item.html;
+    chatMessages.appendChild(temp.firstElementChild);
+  });
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+// Add message to chat DOM
 function addMessage(role, content, typewriter = false) {
+  if (!activeSessionId) return;
+  const currentSessionId = activeSessionId; // Capture for async ops
+
   const msgEl = document.createElement('div');
   msgEl.classList.add('message', role);
 
@@ -230,23 +400,32 @@ function addMessage(role, content, typewriter = false) {
     let i = 0;
     const speed = 15;
     const interval = setInterval(() => {
-      contentEl.innerHTML = formatMarkdown(content.slice(0, i));
-      chatMessages.scrollTop = chatMessages.scrollHeight;
+      // Only update DOM if we are still on the same tab
+      if (activeSessionId === currentSessionId) {
+        contentEl.innerHTML = formatMarkdown(content.slice(0, i));
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+      }
       i += 2;
       if (i > content.length) {
         contentEl.innerHTML = formatMarkdown(content);
-        chatMessages.scrollTop = chatMessages.scrollHeight;
+        if (activeSessionId === currentSessionId) {
+           chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+        saveToHistory(currentSessionId, msgEl.outerHTML);
         clearInterval(interval);
       }
     }, speed);
   } else {
     contentEl.innerHTML = formatMarkdown(content);
     chatMessages.scrollTop = chatMessages.scrollHeight;
+    saveToHistory(currentSessionId, msgEl.outerHTML);
   }
 }
 
 // Add tool call indicator
-function addToolCall(name, args) {
+function addToolCall(name, args, hint) {
+  if (!activeSessionId) return;
+
   const el = document.createElement('div');
   el.classList.add('message', 'tool');
 
@@ -271,15 +450,25 @@ function addToolCall(name, args) {
 
   contentEl.textContent = `[${name}] ${argsStr}`;
 
+  if (hint) {
+    const hintEl = document.createElement('span');
+    hintEl.classList.add('tool-hint');
+    hintEl.textContent = hint;
+    contentEl.appendChild(hintEl);
+  }
+
   el.appendChild(prefixEl);
   el.appendChild(contentEl);
 
   chatMessages.appendChild(el);
   chatMessages.scrollTop = chatMessages.scrollHeight;
+  
+  saveToHistory(activeSessionId, el.outerHTML, 'tool');
 }
 
 // Add thinking indicator
 function addThinking() {
+  removeThinking();
   const el = document.createElement('div');
   el.classList.add('thinking');
   el.id = 'thinking-indicator';
@@ -294,15 +483,15 @@ function addThinking() {
 }
 
 function removeThinking() {
-  const el = document.getElementById('thinking-indicator');
-  if (el) el.remove();
+  document.querySelectorAll('.thinking').forEach(el => el.remove());
 }
 
 // Send message
 async function sendMessage() {
   const text = chatInput.value.trim();
-  if (!text || isLoading) return;
+  if (!text || isLoading || !activeSessionId) return;
 
+  const currentSessionId = activeSessionId;
   isLoading = true;
   sendBtn.style.display = 'none';
   stopBtn.style.display = 'flex';
@@ -313,8 +502,10 @@ async function sendMessage() {
   addThinking();
 
   try {
-    const result = await window.api.sendAiMessage(text);
-    removeThinking();
+    const result = await window.api.sendAiMessage(currentSessionId, text);
+    if (activeSessionId === currentSessionId) {
+       removeThinking();
+    }
 
     if (result.error) {
       if (result.error.includes('AbortError')) {
@@ -326,21 +517,36 @@ async function sendMessage() {
       addMessage('assistant', result.content, true);
     }
   } catch (err) {
-    removeThinking();
+    if (activeSessionId === currentSessionId) removeThinking();
     addMessage('error', `⚠️ Failed to get response: ${err.message}`);
   }
 
   isLoading = false;
-  sendBtn.style.display = 'flex';
-  stopBtn.style.display = 'none';
-  chatInput.focus();
+  if (activeSessionId === currentSessionId) {
+      sendBtn.style.display = 'flex';
+      stopBtn.style.display = 'none';
+      chatInput.focus();
+  }
 }
 
 // Listen for tool calls from main process
-window.api.onAiToolCall((toolCall) => {
-  removeThinking();
-  addToolCall(toolCall.name, toolCall.args);
-  addThinking();
+window.api.onAiToolCall((targetSessionId, toolCall) => {
+  if (activeSessionId === targetSessionId) {
+    removeThinking();
+  }
+  
+  // Actually render it if it's the active view
+  if (activeSessionId === targetSessionId) {
+      addToolCall(toolCall.name, toolCall.args, toolCall.hint);
+      addThinking();
+  } else {
+      // Save it "silently" into history for the other tab
+      const el = document.createElement('div');
+      el.classList.add('message', 'tool');
+      el.innerHTML = `<div class="message-prefix"><span>🐱</span><span>&gt;</span></div>
+                      <div class="message-content">[${toolCall.name}] ${JSON.stringify(toolCall.args)}</div>`;
+      saveToHistory(targetSessionId, el.outerHTML, 'tool');
+  }
 });
 
 // Send button
@@ -348,8 +554,8 @@ sendBtn.addEventListener('click', sendMessage);
 
 // Stop button
 stopBtn.addEventListener('click', () => {
-  if (isLoading) {
-    window.api.stopAiMessage();
+  if (isLoading && activeSessionId) {
+    window.api.stopAiMessage(activeSessionId);
   }
 });
 
@@ -419,6 +625,11 @@ function escapeHtml(str) {
 function formatMarkdown(text) {
   let html = escapeHtml(text);
 
+  // Parse <think>...</think> tags into collapsible details
+  html = html.replace(/&lt;think&gt;([\s\S]*?)(?:&lt;\/think&gt;|$)/g, (match, content) => {
+      return `<details class="think-details"><summary>Thinking...</summary><div class="think-content">${content.trim()}</div></details>`;
+  });
+
   // Code blocks (```)
   html = html.replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code>$2</code></pre>');
 
@@ -439,8 +650,7 @@ function formatMarkdown(text) {
 
 // Focus terminal on click outside chat
 document.getElementById('terminal-container').addEventListener('click', () => {
-  term.focus();
+  if (activeSessionId && sessions.has(activeSessionId)) {
+    sessions.get(activeSessionId).term.focus();
+  }
 });
-
-// Initial focus
-setTimeout(() => term.focus(), 200);
