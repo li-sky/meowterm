@@ -3,6 +3,8 @@ name: Build Electron App
 on:
   push:
     branches: [ master, main ]
+    tags:
+      - 'v*'
   pull_request:
     branches: [ master, main ]
 
@@ -52,3 +54,55 @@ jobs:
           path: |
             out/make/deb/x64/*.deb
             out/make/rpm/x64/*.rpm
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Download Windows Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: meowterm-windows
+          path: artifacts/windows
+
+      - name: Download macOS Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: meowterm-macos
+          path: artifacts/macos
+
+      - name: Download Linux Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: meowterm-linux
+          path: artifacts/linux
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: MeowTerm ${{ github.ref_name }}
+          body: |
+            ## 🐱 MeowTerm ${{ github.ref_name }}
+            
+            ### 📦 Downloads
+            - Windows: meowterm-windows (exe installer)
+            - macOS: meowterm-macos (zip)
+            - Linux: meowterm-linux (deb/rpm)
+            
+            ---
+            [View full changelog](https://github.com/${{ github.repository }}/commits/${{ github.ref_name }})
+          files: |
+            artifacts/windows/*.exe
+            artifacts/macos/*.zip
+            artifacts/linux/*.deb
+            artifacts/linux/*.rpm
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
