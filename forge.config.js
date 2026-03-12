@@ -3,8 +3,32 @@ const { FuseV1Options, FuseVersion } = require('@electron/fuses');
 
 module.exports = {
   packagerConfig: {
-    asar: {
-      unpack: '**/{node-pty,node-pty/**}',
+    asar: true,
+    ignore: (file) => {
+      // Allow root dir
+      if (!file) return false;
+      // Allow vite build output
+      if (file.startsWith('/.vite')) return false;
+      // Allow package.json
+      if (file === '/package.json') return false;
+      // Allow node_modules dir itself
+      if (file === '/node_modules') return false;
+      // Allow node-pty but filter heavy dev/build files
+      if (file.startsWith('/node_modules/node-pty')) {
+        const ext = file.split('.').pop().toLowerCase();
+        if (['pdb', 'obj', 'lib', 'cc', 'cpp', 'h', 'tlog'].includes(ext)) {
+          return true; // Ignore debug symbols and c++ source/compilation artifacts
+        }
+        if (file.includes('/build/Release/obj')) {
+          return true;
+        }
+        if (file.includes('/prebuilds/')) {
+          return true; // Ignore prebuilt binaries for other platforms, we use the local build
+        }
+        return false;
+      }
+      // Ignore everything else
+      return true;
     },
   },
   rebuildConfig: {},
@@ -27,6 +51,10 @@ module.exports = {
     },
   ],
   plugins: [
+    {
+      name: '@electron-forge/plugin-auto-unpack-natives',
+      config: {},
+    },
     {
       name: '@electron-forge/plugin-vite',
       config: {
