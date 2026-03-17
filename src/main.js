@@ -3,6 +3,7 @@ import path from 'node:path';
 import os from 'node:os';
 import fs from 'node:fs';
 import started from 'electron-squirrel-startup';
+import { updateElectronApp, UpdateSourceType } from 'update-electron-app';
 import { AIService } from './main/ai-service.js';
 
 // --- Config Setup ---
@@ -272,6 +273,16 @@ ipcMain.handle('clipboard:read', () => {
 });
 
 app.whenReady().then(() => {
+  // Start checking for Squirrel updates via update.electronjs.org (production only)
+  if (app.isPackaged) {
+    updateElectronApp({
+      updateSource: {
+        type: UpdateSourceType.ElectronPublicUpdateService,
+        repo: 'li-sky/meowterm',
+      },
+    });
+  }
+
   createWindow();
 
   app.on('activate', () => {

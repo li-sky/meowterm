@@ -52,6 +52,21 @@ module.exports = {
       config: {},
     },
   ],
+  publishers: [
+    {
+      name: '@electron-forge/publisher-github',
+      config: {
+        repository: {
+          owner: 'li-sky',
+          name: 'meowterm',
+        },
+        prerelease: false,
+        // Publish as a draft first so the release can be reviewed before
+        // going live and becoming visible to the auto-updater.
+        draft: true,
+      },
+    },
+  ],
   plugins: [
     {
       name: '@electron-forge/plugin-auto-unpack-natives',

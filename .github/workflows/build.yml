@@ -42,7 +42,10 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: meowterm-windows
-          path: out/make/squirrel.windows/**/*.exe
+          # Include the full Squirrel output: Setup.exe, *.nupkg, and RELEASES.
+          # The RELEASES manifest and *.nupkg files are required by the
+          # update.electronjs.org auto-update service.
+          path: out/make/squirrel.windows/
           
       - name: Archive Production Artifacts (macOS)
         if: matrix.os == 'macos-latest'
@@ -106,6 +109,8 @@ jobs:
             [View full changelog](https://github.com/${{ github.repository }}/commits/${{ github.ref_name }})
           files: |
             artifacts/windows/**/*.exe
+            artifacts/windows/**/*.nupkg
+            artifacts/windows/**/RELEASES
             artifacts/macos/**/*.zip
             artifacts/linux/**/*.deb
             artifacts/linux/**/*.rpm
