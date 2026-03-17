@@ -35,4 +35,8 @@ contextBridge.exposeInMainWorld('api', {
     },
     sendAiScreenData: (data) => ipcRenderer.send('ai:screen-data', data),
     sendAiHistoryData: (data) => ipcRenderer.send('ai:history-data', data),
+
+    // Clipboard
+    copyText: (text) => ipcRenderer.invoke('clipboard:write', text),
+    readClipboard: () => ipcRenderer.invoke('clipboard:read'),
 });

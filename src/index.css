@@ -610,7 +610,65 @@ body {
   padding: 0;
 }
 
-/* === Think Details === */
+/* === Terminal Context Menu === */
+#terminal-context-menu {
+  position: fixed;
+  z-index: 9999;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-active);
+  border-radius: var(--radius-sm);
+  padding: 4px 0;
+  min-width: 190px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  display: none;
+  font-family: var(--font-ui);
+  font-size: 13px;
+  user-select: none;
+}
+
+.ctx-menu-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 7px 14px;
+  color: var(--text-primary);
+  cursor: pointer;
+  gap: 24px;
+  transition: background 0.1s ease;
+}
+
+.ctx-menu-item:hover {
+  background: rgba(124, 92, 255, 0.15);
+  color: var(--accent-primary);
+}
+
+.ctx-menu-item.disabled {
+  color: var(--text-muted);
+  cursor: default;
+}
+
+.ctx-menu-item.disabled:hover {
+  background: transparent;
+  color: var(--text-muted);
+}
+
+.ctx-menu-shortcut {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-family: var(--font-mono);
+  flex-shrink: 0;
+}
+
+.ctx-menu-item:not(.disabled):hover .ctx-menu-shortcut {
+  color: var(--accent-primary);
+  opacity: 0.7;
+}
+
+.ctx-menu-separator {
+  height: 1px;
+  background: var(--border-color);
+  margin: 4px 0;
+}
 .think-details {
   margin: 4px 0;
   background: var(--bg-tertiary);

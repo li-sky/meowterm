@@ -22,6 +22,92 @@ const terminalContainerEl = document.getElementById('terminal-container');
 // Global config cache
 let currentConfig = null;
 
+// =====================
+// Context Menu
+// =====================
+
+const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+const modLabel = isMac ? '⌘⇧' : 'Ctrl+Shift+';
+
+const ctxMenu = document.createElement('div');
+ctxMenu.id = 'terminal-context-menu';
+document.body.appendChild(ctxMenu);
+
+function showContextMenu(x, y, sessionId, term) {
+  const hasSelection = !!term.getSelection();
+
+  ctxMenu.innerHTML = `
+    <div class="ctx-menu-item${!hasSelection ? ' disabled' : ''}" data-action="copy">
+      <span>Copy</span>
+      <span class="ctx-menu-shortcut">${modLabel}C</span>
+    </div>
+    <div class="ctx-menu-item" data-action="paste">
+      <span>Paste</span>
+      <span class="ctx-menu-shortcut">${modLabel}V</span>
+    </div>
+    <div class="ctx-menu-separator"></div>
+    <div class="ctx-menu-item" data-action="select-all">
+      <span>Select All</span>
+    </div>
+    <div class="ctx-menu-separator"></div>
+    <div class="ctx-menu-item" data-action="clear">
+      <span>Clear</span>
+    </div>
+  `;
+
+  // Position off-screen first to measure
+  ctxMenu.style.left = '0';
+  ctxMenu.style.top = '0';
+  ctxMenu.style.display = 'block';
+
+  const menuWidth = ctxMenu.offsetWidth;
+  const menuHeight = ctxMenu.offsetHeight;
+  let left = x;
+  let top = y;
+  if (x + menuWidth > window.innerWidth) left = x - menuWidth;
+  if (y + menuHeight > window.innerHeight) top = y - menuHeight;
+
+  ctxMenu.style.left = left + 'px';
+  ctxMenu.style.top = top + 'px';
+
+  ctxMenu.onclick = async (e) => {
+    const item = e.target.closest('.ctx-menu-item');
+    if (!item || item.classList.contains('disabled')) return;
+
+    const action = item.dataset.action;
+    hideContextMenu();
+
+    if (action === 'copy') {
+      await copySelection(term);
+    } else if (action === 'paste') {
+      await pasteFromClipboard(sessionId);
+    } else if (action === 'select-all') {
+      term.selectAll();
+    } else if (action === 'clear') {
+      term.clear();
+    }
+  };
+}
+
+function hideContextMenu() {
+  ctxMenu.style.display = 'none';
+}
+
+async function copySelection(term) {
+  const sel = term.getSelection();
+  if (sel) await window.api.copyText(sel);
+}
+
+async function pasteFromClipboard(sessionId) {
+  const text = await window.api.readClipboard();
+  if (text) window.api.ptyWrite(sessionId, text);
+}
+
+document.addEventListener('click', hideContextMenu);
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') hideContextMenu();
+});
+
 function createTerminalInstance() {
   const term = new Terminal({
     fontFamily: currentConfig?.terminal?.fontFamily || "'JetBrains Mono', 'Cascadia Code', 'Fira Code', monospace",
@@ -119,6 +205,31 @@ function createSessionUI(sessionId, title = 'Terminal') {
 
   const { term, fitAddon } = createTerminalInstance();
   term.open(wrapperEl);
+
+  // Keyboard shortcuts: Ctrl+Shift+C to copy, Ctrl+Shift+V to paste
+  term.attachCustomKeyEventHandler((e) => {
+    if (e.type !== 'keydown') return true;
+
+    const useMetaKey = isMac ? e.metaKey : e.ctrlKey;
+
+    if (useMetaKey && e.shiftKey && e.key === 'C') {
+      copySelection(term);
+      return false;
+    }
+
+    if (useMetaKey && e.shiftKey && e.key === 'V') {
+      pasteFromClipboard(sessionId);
+      return false;
+    }
+
+    return true;
+  });
+
+  // Right-click context menu
+  wrapperEl.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    showContextMenu(e.clientX, e.clientY, sessionId, term);
+  });
 
   const sessionData = { term, fitAddon, tabEl, wrapperEl };
   sessions.set(sessionId, sessionData);
