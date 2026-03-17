@@ -18,8 +18,8 @@ module.exports = {
       // Allow node-pty but filter heavy dev/build files
       if (file.startsWith('/node_modules/node-pty')) {
         const ext = file.split('.').pop().toLowerCase();
-        if (['pdb', 'obj', 'lib', 'cc', 'cpp', 'h', 'tlog'].includes(ext)) {
-          return true; // Ignore debug symbols and c++ source/compilation artifacts
+        if (['pdb', 'obj', 'lib', 'tlog'].includes(ext)) {
+          return true; // Ignore debug symbols and Windows compilation artifacts
         }
         if (file.includes('/build/Release/obj')) {
           return true;
