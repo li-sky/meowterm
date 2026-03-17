@@ -1,8 +1,8 @@
 {
-  "name": "meowterm",
-  "productName": "meowterm",
-  "version": "0.0.3",
-  "description": "My Electron application description",
+  "name": "MeowTerm",
+  "productName": "MeowTerm",
+  "version": "0.0.4",
+  "description": "MeowTerm is an AI-native terminal.",
   "main": ".vite/build/main.js",
   "private": true,
   "scripts": {
@@ -17,7 +17,7 @@
     "name": "Sky Li",
     "email": "skyli@skyli.xyz"
   },
-  "license": "MIT",
+  "license": "GPL-3.0",
   "dependencies": {
     "node-addon-api": "^7.1.0",
     "node-pty": "^1.1.0"
