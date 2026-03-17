@@ -13,6 +13,8 @@ module.exports = {
       if (file === '/package.json') return false;
       // Allow node_modules dir itself
       if (file === '/node_modules') return false;
+      // Allow node-addon-api (required by node-pty's native rebuild)
+      if (file.startsWith('/node_modules/node-addon-api')) return false;
       // Allow node-pty but filter heavy dev/build files
       if (file.startsWith('/node_modules/node-pty')) {
         const ext = file.split('.').pop().toLowerCase();
