@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain } from 'electron';
+import { app, BrowserWindow, ipcMain, clipboard } from 'electron';
 import path from 'node:path';
 import os from 'node:os';
 import fs from 'node:fs';
@@ -237,6 +237,15 @@ const createWindow = () => {
     };
   });
 };
+
+// --- Clipboard ---
+ipcMain.handle('clipboard:write', (_event, text) => {
+  clipboard.writeText(text);
+});
+
+ipcMain.handle('clipboard:read', () => {
+  return clipboard.readText();
+});
 
 app.whenReady().then(() => {
   createWindow();
