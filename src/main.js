@@ -77,18 +77,27 @@ function spawnPty(sessionId, cwd = null, cols = 120, rows = 30, mainWindow) {
   sessions.set(sessionId, session);
 
   ptyProcess.onData((data) => {
+    // Guard against events arriving after the session was already closed
+    // (e.g. via closeSession()) or while the window is being torn down.
+    if (!sessions.has(sessionId)) return;
     const lines = data.split('\n');
     session.terminalBuffer.push(...lines);
     while (session.terminalBuffer.length > MAX_BUFFER_LINES) {
       session.terminalBuffer.shift();
     }
-    mainWindow.webContents.send('pty:data', { sessionId, data });
+    if (!mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('pty:data', { sessionId, data });
+    }
   });
 
   ptyProcess.onExit(({ exitCode }) => {
-    mainWindow.webContents.send('pty:exit', { sessionId, exitCode });
-    sessions.delete(sessionId);
-    saveSessions();
+    if (!mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('pty:exit', { sessionId, exitCode });
+    }
+    if (sessions.has(sessionId)) {
+      sessions.delete(sessionId);
+      saveSessions();
+    }
   });
 
   saveSessions();
@@ -142,6 +151,21 @@ const createWindow = () => {
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
     mainWindow.webContents.openDevTools();
   }
+
+  // Kill all PTY processes before the window is destroyed so that pending
+  // onData / onExit events don't fire against a destroyed webContents.
+  // We use the 'close' event (window still alive) rather than 'closed'
+  // (window already destroyed) intentionally; the isDestroyed() guards in
+  // the PTY callbacks act as a safety net for any events still in the queue.
+  mainWindow.on('close', () => {
+    for (const session of sessions.values()) {
+      if (session.ptyProcess) {
+        session.ptyProcess.kill();
+      }
+    }
+    sessions.clear();
+    saveSessions();
+  });
 
   // Spawn PTY when renderer is ready
   mainWindow.webContents.on('did-finish-load', () => {
